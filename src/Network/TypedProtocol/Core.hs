@@ -108,5 +108,5 @@ await tha = Await tha PReturn
 effect :: Functor m => m a -> Peer ps pr m (At a st) st
 effect ma = Effect (fmap (PReturn . At) ma)
 
-preturn :: a -> Peer ps pr m (At a i) i 
-preturn a = PReturn (At a)
+atReturn :: a -> Peer ps pr m (At a i) i 
+atReturn a = PReturn (At a)

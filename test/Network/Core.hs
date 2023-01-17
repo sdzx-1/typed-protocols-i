@@ -59,7 +59,7 @@ pingPongClientPeer = I.do
          if i > 10 
           then I.do
             yield (ClientAgency TokIdle) MsgDone
-            preturn ()
+            atReturn ()
           else I.do
             yield (ClientAgency TokIdle) MsgPing 
             effect $ modify @Int (+1)
@@ -72,7 +72,7 @@ pingPongServerPeer = Indexed.do
     await (ClientAgency TokIdle) I.>>= \case
       MsgDone -> I.do 
         effect $ sendIO (print "recv MsgDone, finish")
-        preturn ()
+        atReturn ()
       MsgPing -> I.do 
         effect $ sendIO (print "recv MsgPing, send MsgPong")
         yield (ServerAgency TokBusy) MsgPong
