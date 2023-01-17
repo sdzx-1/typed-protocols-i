@@ -68,12 +68,12 @@ data Peer ps (pr :: PeerRole) m q (st :: ps)  where
 
   PReturn ::  q st -> Peer ps pr m q st
 
+  Done   :: !(NobodyHasAgency st)
+         -> At a st st
+         -> Peer ps pr m p st 
+
   Effect :: m (Peer ps pr m q st )
          ->    Peer ps pr m q st 
-
-  -- Done   :: !(NobodyHasAgency st)
-  --        -> a
-  --        -> Peer ps pr st m a
 
   Yield  :: !(WeHaveAgency pr st)
          -> Message ps st st'
@@ -86,6 +86,7 @@ data Peer ps (pr :: PeerRole) m q (st :: ps)  where
 
 instance Functor m => IFunctor (Peer ps pr m) where
   imap f (PReturn q)   = PReturn (f q)
+  imap _ (Done nha a) = Done nha a
   imap f (Effect mq)   = Effect (fmap (imap f) mq)
   imap f (Yield a b c) = Yield a b (imap f c)
   imap f (Await a f')  = Await a (imap f . f')
@@ -95,6 +96,7 @@ instance Functor m => IApplicative (Peer ps pr m) where
 
 instance Functor m => IMonad (Peer ps pr m) where
   ibind f (PReturn q)   = f q
+  ibind _ (Done nha a)  = Done nha a
   ibind f (Effect mq)   = Effect (fmap (ibind f) mq)
   ibind f (Yield a b c) = Yield a b (ibind f c)
   ibind f (Await a f')  = Await a (ibind f . f')
@@ -107,6 +109,9 @@ await tha = Await tha PReturn
 
 effect :: Functor m => m a -> Peer ps pr m (At a st) st
 effect ma = Effect (fmap (PReturn . At) ma)
+
+done :: NobodyHasAgency st -> a -> Peer ps pr m p st
+done nha a = Done nha (At a) 
 
 atReturn :: a -> Peer ps pr m (At a i) i 
 atReturn a = PReturn (At a)
