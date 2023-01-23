@@ -59,7 +59,10 @@ library
 
     -- Modules exported by the library.
     exposed-modules: Indexed.Functor
+                   , Data.Type.Queue
                    , Network.TypedProtocol.Core
+                   , Network.TypedProtocol.Pipelined
+                   , Network.TypedProtocol.T
 
     -- Modules included in this library but not exported.
     -- other-modules:
