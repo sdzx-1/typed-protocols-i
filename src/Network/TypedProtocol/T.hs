@@ -10,12 +10,13 @@
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Network.TypedProtocol.T where
 
 import Control.Monad (forever)
 import Data.Kind (Type)
-import Indexed.Functor
 import Indexed.Functor as I
 import Network.TypedProtocol.Core hiding (effect)
 import Network.TypedProtocol.Pipelined
@@ -117,26 +118,28 @@ instance Protocol PingPong where
   exclusionLemma_NobodyAndServerHaveAgency TokDone tok = case tok of {}
 
 ppClientPeerSender ::
-  Functor m =>
+  Functor m => Int ->
   PS PingPong AsClient c m (At () '(Z, StDone)) '(Z, StIdle)
-ppClientPeerSender = I.do
-  sYield (ClientAgency TokIdle) MsgPing
-  K v <- sAwait (ServerAgency TokBusy)
-  case v of
-    MsgPong -> sYield (ClientAgency TokIdle) MsgDone
+ppClientPeerSender i = I.do
+  if i <= 0 
+    then sYield (ClientAgency TokIdle) MsgDone
+    else I.do
+      sYield (ClientAgency TokIdle) MsgPing
+      K v <- sAwait (ServerAgency TokBusy)
+      case v of
+        MsgPong -> ppClientPeerSender (i - 1)
 
 ppSender ::
   Functor m =>
-  PS PingPong AsClient () m (At () '(Z, StDone)) '(Z, StIdle)
+  PS PingPong AsClient Int m (At Int '(Z, StDone)) '(Z, StIdle)
 ppSender = I.do
   sYield (ClientAgency TokIdle) MsgPing
   K v <- sAwait (ServerAgency TokBusy)
   case v of
     MsgPong -> I.do
-      sPipeline (ClientAgency TokIdle) MsgPing (ReceiverAwait (ServerAgency TokBusy) $ \MsgPong -> ReceiverDone ())
-      sPipeline (ClientAgency TokIdle) MsgPing (ReceiverAwait (ServerAgency TokBusy) $ \MsgPong -> ReceiverDone ())
-      sCollect
-      sCollect
-      sPipeline (ClientAgency TokIdle) MsgPing (ReceiverAwait (ServerAgency TokBusy) $ \MsgPong -> ReceiverDone ())
-      sCollect
+      sPipeline (ClientAgency TokIdle) MsgPing (ReceiverAwait @_ @_ @_ @'StIdle (ServerAgency TokBusy) $ \MsgPong -> ReceiverDone 1)
+      sPipeline (ClientAgency TokIdle) MsgPing (ReceiverAwait  @_ @_ @_ @'StIdle (ServerAgency TokBusy) $ \MsgPong -> ReceiverDone 2)
+      At i <- sCollect
+      At j <- sCollect
       sYield (ClientAgency TokIdle) MsgDone
+      sReturn (i + j)
