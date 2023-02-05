@@ -121,32 +121,29 @@ sReturn a = SReturn (At a)
 effect :: Functor m => m a -> Peer ps pr m (At a st) st
 effect ma = SEffect (fmap (SReturn . At) ma)
 
+-------------------------- client fun
 sYield ::
-  (SingI st, SingI st', ActiveState st) =>
-  WeHaveAgencyProof pr st ->
+  (SingI st, SingI st', ActiveState st, StateAgency st ~ ClientAgency) =>
   Message ps st st' ->
-  Peer ps pr m (At () '(pl, Empty, st')) '(pl, Empty, st)
-sYield wha msg = SYield wha msg (SReturn (At ()))
+  Peer ps AsClient m (At () '(pl, Empty, st')) '(pl, Empty, st)
+sYield msg = SYield ReflClientAgency msg (SReturn (At ()))
 
 sAwait ::
-  (SingI st, ActiveState st) =>
-  TheyHaveAgencyProof pr st ->
-  Peer ps pr m (K ps '(pl, Empty, st)) '(pl, Empty, st)
-sAwait tha = SAwait tha SReturn
+  (SingI st, ActiveState st, StateAgency st ~ ServerAgency) =>
+  Peer ps AsClient m (K ps '(pl, Empty, st)) '(pl, Empty, st)
+sAwait = SAwait ReflServerAgency SReturn
 
 sYieldPipelined ::
-  forall ps (st'' :: ps) st st' pr m que.
-  (SingI st, SingI st', ActiveState st) =>
-  WeHaveAgencyProof pr st ->
+  forall ps (st'' :: ps) st st' m que.
+  (SingI st, SingI st', ActiveState st, StateAgency st ~ ClientAgency) =>
   Message ps st st' ->
-  Peer ps pr m (At () '(Pipelined, que |> Tr st' st'', st'')) '(Pipelined, que, st)
-sYieldPipelined wha msg = SYieldPipelined wha msg (SReturn (At ()))
+  Peer ps AsClient m (At () '(Pipelined, que |> Tr st' st'', st'')) '(Pipelined, que, st)
+sYieldPipelined msg = SYieldPipelined ReflClientAgency msg (SReturn (At ()))
 
 sCollect ::
-  (SingI st', ActiveState st') =>
-  TheyHaveAgencyProof pr st' ->
-  Peer ps pr m (C ps '(Pipelined, Tr st' st'' <| que, st)) '(Pipelined, Tr st' st'' <| que, st)
-sCollect thap = SCollect thap SReturn
+  (SingI st', ActiveState st', StateAgency st' ~ ServerAgency) =>
+  Peer ps AsClient m (C ps '(Pipelined, Tr st' st'' <| que, st)) '(Pipelined, Tr st' st'' <| que, st)
+sCollect = SCollect ReflServerAgency SReturn
 
 sCollectDone :: Peer ps pr m (At () '(Pipelined, que, st')) '(Pipelined, Tr st st <| que, st')
 sCollectDone = SCollectDone (SReturn $ At ())
@@ -196,15 +193,15 @@ ppClient ::
     (At () '(Pipelined, Empty, StDone))
     '(Pipelined, Empty, StIdle)
 ppClient = I.do
-  sYieldPipelined ReflClientAgency MsgPing
-  sYieldPipelined @_ @'StIdle ReflClientAgency MsgPing
-  sCollect ReflServerAgency I.>>= \(C v) -> case v of
+  sYieldPipelined MsgPing
+  sYieldPipelined @_ @'StIdle MsgPing
+  sCollect I.>>= \(C v) -> case v of
     MsgPong -> I.do
       sCollectDone
-      sCollect ReflServerAgency I.>>= \(C v') -> case v' of
+      sCollect I.>>= \(C v') -> case v' of
         MsgPong -> I.do
           sCollectDone
-          sYield ReflClientAgency MsgDone
+          sYield MsgDone
 
 ppClient1 ::
   (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
@@ -215,14 +212,14 @@ ppClient1 ::
     (At () '(Pipelined, Empty, StDone))
     '(Pipelined, Empty, StIdle)
 ppClient1 = I.do
-  sYieldPipelined ReflClientAgency MsgPing
-  sYieldPipelined ReflClientAgency MsgPing
-  sYieldPipelined ReflClientAgency MsgPing
-  sYieldPipelined @_ @StDone ReflClientAgency MsgDone
-  C MsgPong <- sCollect ReflServerAgency
+  sYieldPipelined MsgPing
+  sYieldPipelined MsgPing
+  sYieldPipelined MsgPing
+  sYieldPipelined @_ @StDone MsgDone
+  C MsgPong <- sCollect
   sCollectDone
-  C MsgPong <- sCollect ReflServerAgency
+  C MsgPong <- sCollect
   sCollectDone
-  C MsgPong <- sCollect ReflServerAgency
+  C MsgPong <- sCollect
   sCollectDone
   sCollectDone
