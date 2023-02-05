@@ -63,6 +63,10 @@ library
                    , Network.TypedProtocol.Core
                    , Network.TypedProtocol.Pipelined
                    , Network.TypedProtocol.T
+                   , Network.Redesign.Core
+                   , Network.Redesign.Peer
+                   , Network.Redesign.T
+                   , Network.Redesign.T1
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -72,6 +76,7 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:    base ^>=4.16.4.0
+                    , singletons >= 3.0
 
     -- Directories containing source files.
     hs-source-dirs:   src
