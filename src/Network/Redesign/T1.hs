@@ -185,6 +185,7 @@ data PingPong where
   StDone :: PingPong
   A :: PingPong
   B :: PingPong
+  P :: PingPong
 
 data SPingPong (st :: PingPong) where
   SingIdle :: SPingPong StIdle
@@ -192,6 +193,7 @@ data SPingPong (st :: PingPong) where
   SingDone :: SPingPong StDone
   SingA :: SPingPong A
   SingB :: SPingPong B
+  SingP :: SPingPong P
 
 deriving instance Show (SPingPong st)
 
@@ -212,19 +214,23 @@ instance SingI A where
 instance SingI B where
   sing = SingB
 
+instance SingI P where
+  sing = SingP
+
 instance Protocol PingPong where
   data Message PingPong from to where
     MsgPing :: Message PingPong StIdle StBusy
     MsgPong :: Message PingPong StBusy StIdle
     MsgDone :: Message PingPong StIdle StDone
-    MsgA :: Int -> Message PingPong StBusy A
+    MsgA :: Message PingPong StBusy P
+    MsgA1 :: Message PingPong P A
     MsgAB :: Message PingPong A B
-    MsgB :: Int -> Message PingPong B StIdle
+    MsgB :: Message PingPong B StIdle
 
   type StateAgency StIdle = ClientAgency
   type StateAgency StBusy = ServerAgency
-
   type StateAgency A = ClientAgency
+  type StateAgency P = ServerAgency
   type StateAgency B = ServerAgency
   type StateAgency StDone = NobodyAgency
 
@@ -240,87 +246,77 @@ ppClient ::
     '(Pipelined, Empty, StIdle)
 ppClient = I.do
   sYieldPipelined MsgPing
-  sYieldPipelined MsgAB
-  sYieldPipelined MsgPing
-  sYieldPipelined MsgPing
-  C1 (MsgA _) <- sCollectDoneF
-  C1 (MsgB _) <- sCollectDoneF
-  C1 MsgPong <- sCollectDoneF
-  C1 MsgPong <- sCollectDoneF
-  sYield MsgDone
+  sYieldPipelined @_ @StIdle MsgAB
+  sCollect I.>>= \case
+    C MsgA ->
+      sCollect I.>>= \case
+        C MsgA1 -> I.do
+          sCollectDone
+          sCollect I.>>= \case
+            C MsgB -> I.do
+              sCollectDone
+              sYield MsgDone
+    _ -> undefined
 
--- sCollectDoneF I.>>= \case
---   -- C1 MsgPong -> sYield MsgDone
---   C1 (MsgA _) -> undefined
--- MsgA _ -> undefined
+ppClient1 ::
+  (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
+  Peer
+    PingPong
+    AsClient
+    m
+    (At () '(Pipelined, Empty, StDone))
+    '(Pipelined, Empty, StIdle)
+ppClient1 = I.do
+  sYieldPipelined @_ @A MsgPing
+  sCollect I.>>= \case
+    C MsgA ->
+      sCollect I.>>= \case
+        C MsgA1 -> I.do
+          sCollectDone
+          sYieldPipelined @_ @StIdle MsgAB
+          sCollect I.>>= \case
+            C MsgB -> I.do
+              sCollectDone
+              sYield MsgDone
+    C MsgPong -> I.do
+      -- sCollectDone
+      -- sYield MsgDone
+      undefined
 
--- class Coll ps que where
---   genColl ::
---     (SingI st', ActiveState st', StateAgency st' ~ ServerAgency) =>
---     Peer
---       ps
---       AsClient
---       m
---       (PK ps st' st'' que st)
---       -- (C1 ps '(Pipelined, Tr st' st'' <| que, st))
---       '(Pipelined, Tr st' st'' <| que, st)
+ppClient2 ::
+  (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
+  Peer
+    PingPong
+    AsClient
+    m
+    (At () '(NonPipelined, Empty, StDone))
+    '(NonPipelined, Empty, StIdle)
+ppClient2 = I.do
+  sYield MsgPing
+  sAwait I.>>= \case
+    K MsgPong -> sYield MsgDone
+    K MsgA ->
+      sAwait I.>>= \case
+        K MsgA1 -> I.do
+          sYield MsgAB
+          sAwait I.>>= \case
+            K MsgB -> sYield MsgDone
 
--- instance (que ~ (Tr st' st'' <| Empty)) => Coll ps que where
---   genColl = sCollectDoneF1
+ppClient3 ::
+  (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
+  Peer
+    PingPong
+    AsClient
+    m
+    (At () '(NonPipelined, Empty, StDone))
+    '(NonPipelined, Empty, StIdle)
+ppClient3 = I.do
+  sYield MsgPing
+  sAwait I.>>= \case
+    K MsgPong -> ppClient3
+    K MsgA -> I.do
+      K MsgA1 <- sAwait
+      sYield MsgAB
+      K MsgB <- sAwait
+      sYield MsgDone
 
--- instance Coll ps (Tr st' st'' <| que)  where
---   genColl = sCollectDoneF
-
--- type family PK ps st' st'' que st where
---   PK ps st' st'' (Tr st' st'' <| Empty) st = C2 ps '(Pipelined, Tr st' st'' <| Empty, st)
---   PK ps st' st'' que st = C1 ps '(Pipelined, Tr st' st'' <| que, st)
-
--- genSCollectDoneF ::
---   (SingI st', ActiveState st', StateAgency st' ~ ServerAgency) =>
---   Peer ps AsClient m (C1 ps '(Pipelined, Tr st' st'' <| que, st))
---                             '(Pipelined, Tr st' st'' <| que, st)
--- genSCollectDoneF = SCollectDoneF ReflServerAgency SReturn
-
--- sCollect2 I.>>= \case
---   C2 MsgPong -> I.do
---     sCollectDone
---     sYield MsgDone
---         sCollectDoneF I.>>= \case
---           C1 MsgPong -> ppClient
-
--- ppClient1 ::
---   (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
---   Peer
---     PingPong
---     AsClient
---     m
---     (At () '(Pipelined, Empty, StDone))
---     '(Pipelined, Empty, StIdle)
--- ppClient1 = I.do
---   sYieldPipelined MsgPing
---   sYieldPipelined MsgAB
---   sYieldPipelined @_ @StDone MsgDone
---   C1 (MsgA i) <- sCollectDoneF
---   C1 (MsgB j) <- sCollectDoneF
---   sCollectDone
-
--- C1 MsgPong <- sCollectDoneF
--- sYield MsgDone
-
--- ppClient1 ::
---   (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
---   Peer
---     PingPong
---     AsClient
---     m
---     (At () '(Pipelined, Empty, StDone))
---     '(Pipelined, Empty, StIdle)
--- ppClient1 = I.do
---   sYieldPipelined @_ @StIdle MsgPing
---   C1 MsgPong <- sCollectDoneF
---   sYieldPipelined @_ @StIdle MsgPing
---   sYieldPipelined @_ @StIdle MsgPing
---   C1 MsgPong <- sCollectDoneF
---   C1 MsgPong <- sCollectDoneF
---   sYieldPipelined @_ @StDone MsgDone
---   sCollectDone
