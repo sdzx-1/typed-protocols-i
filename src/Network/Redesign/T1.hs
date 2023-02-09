@@ -36,6 +36,10 @@ type family EST que st st'' where
   EST Empty st st'' = st''
   EST _ st st'' = st
 
+type family RA a b c where
+  RA st'' st'' que = que
+  RA stNext st'' que = Tr stNext st'' <| que
+
 data
   C ps ::
     (IsPipelined, Queue ps, ps)
@@ -44,17 +48,7 @@ data
   where
   C
     :: Message ps st' stNext
-    -> C ps '(pl, Tr st' st'' <| que, st) '(pl, Tr stNext st'' <| que, EST que st st'')
-
-data
-  C1 ps ::
-    (IsPipelined, Queue ps, ps)
-    -> (IsPipelined, Queue ps, ps)
-    -> Type
-  where
-  C1
-    :: Message ps st' st''
-    -> C1 ps '(pl, Tr st' st'' <| que, st) '(pl, que, EST que st st'')
+    -> C ps '(pl, Tr st' st'' <| que, st) '(pl, RA stNext st'' que, EST que st st'')
 
 type Peer
   :: forall ps
@@ -102,18 +96,6 @@ data Peer ps pr m q k where
     => TheyHaveAgencyProof pr st'
     -> (C ps '(Pipelined, Tr st' st'' <| que, st) I.~> Peer ps pr m q)
     -> Peer ps pr m q '(Pipelined, Tr st' st'' <| que, st)
-  SCollectDone
-    :: forall ps pr que (st :: ps) (st' :: ps) m q
-     . Peer ps pr m q '(Pipelined, que, st')
-    -> Peer ps pr m q '(Pipelined, Tr st st <| que, st')
-  SCollectDoneF
-    :: forall ps pr que (st :: ps) (st' :: ps) (st'' :: ps) m q
-     . ( SingI st'
-       , ActiveState st'
-       )
-    => TheyHaveAgencyProof pr st'
-    -> (C1 ps '(Pipelined, Tr st' st'' <| que, st) I.~> Peer ps pr m q)
-    -> Peer ps pr m q '(Pipelined, Tr st' st'' <| que, st)
 
 instance Functor m => IFunctor (Peer ps pr m) where
   imap f (SReturn q) = SReturn (f q)
@@ -122,8 +104,6 @@ instance Functor m => IFunctor (Peer ps pr m) where
   imap f (SAwait thap cont) = SAwait thap (imap f . cont)
   imap f (SYieldPipelined whap msg pr) = SYieldPipelined whap msg (imap f pr)
   imap f (SCollect thap cont) = SCollect thap (imap f . cont)
-  imap f (SCollectDone pr) = SCollectDone (imap f pr)
-  imap f (SCollectDoneF thap cont) = SCollectDoneF thap (imap f . cont)
 
 instance Functor m => IApplicative (Peer ps pr m) where
   ireturn = SReturn
@@ -135,8 +115,6 @@ instance Functor m => IMonad (Peer ps pr m) where
   ibind f (SAwait thap cont) = SAwait thap (ibind f . cont)
   ibind f (SYieldPipelined whap msg pr) = SYieldPipelined whap msg (ibind f pr)
   ibind f (SCollect thap cont) = SCollect thap (ibind f . cont)
-  ibind f (SCollectDone pr) = SCollectDone (ibind f pr)
-  ibind f (SCollectDoneF thap cont) = SCollectDoneF thap (ibind f . cont)
 
 --   SReturn :: q k -> Peer ps pr m q k
 sReturn :: a -> Peer ps pr m (At a i) i
@@ -169,14 +147,6 @@ sCollect
   :: (SingI st', ActiveState st', StateAgency st' ~ ServerAgency)
   => Peer ps AsClient m (C ps '(Pipelined, Tr st' st'' <| que, st)) '(Pipelined, Tr st' st'' <| que, st)
 sCollect = SCollect ReflServerAgency SReturn
-
-sCollectDone :: Peer ps pr m (At () '(Pipelined, que, st')) '(Pipelined, Tr st st <| que, st')
-sCollectDone = SCollectDone (SReturn $ At ())
-
-sCollectDoneF
-  :: (SingI st', ActiveState st', StateAgency st' ~ ServerAgency)
-  => Peer ps AsClient m (C1 ps '(Pipelined, Tr st' st'' <| que, st)) '(Pipelined, Tr st' st'' <| que, st)
-sCollectDoneF = SCollectDoneF ReflServerAgency SReturn
 
 -- ---------------------------- example
 data PingPong where
@@ -251,10 +221,8 @@ ppClient = I.do
     C MsgA ->
       sCollect I.>>= \case
         C MsgA1 -> I.do
-          sCollectDone
           sCollect I.>>= \case
             C MsgB -> I.do
-              sCollectDone
               sYield MsgDone
     _ -> undefined
 
@@ -272,14 +240,11 @@ ppClient1 = I.do
     C MsgA ->
       sCollect I.>>= \case
         C MsgA1 -> I.do
-          sCollectDone
           sYieldPipelined @_ @StIdle MsgAB
           sCollect I.>>= \case
             C MsgB -> I.do
-              sCollectDone
               sYield MsgDone
     C MsgPong -> I.do
-      -- sCollectDone
       -- sYield MsgDone
       undefined
 
