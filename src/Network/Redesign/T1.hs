@@ -26,9 +26,9 @@ import Network.Redesign.Core as Core
 
 data
   K ps ::
-    (IsPipelined, Queue ps, ps) ->
-    (IsPipelined, Queue ps, ps) ->
-    Type
+    (IsPipelined, Queue ps, ps)
+    -> (IsPipelined, Queue ps, ps)
+    -> Type
   where
   K :: Message ps st st' -> K ps '(pl, que, st) '(pl, que, st')
 
@@ -38,82 +38,82 @@ type family EST que st st'' where
 
 data
   C ps ::
-    (IsPipelined, Queue ps, ps) ->
-    (IsPipelined, Queue ps, ps) ->
-    Type
+    (IsPipelined, Queue ps, ps)
+    -> (IsPipelined, Queue ps, ps)
+    -> Type
   where
-  C ::
-    Message ps st' stNext ->
-    C ps '(pl, Tr st' st'' <| que, st) '(pl, Tr stNext st'' <| que, EST que st st'')
+  C
+    :: Message ps st' stNext
+    -> C ps '(pl, Tr st' st'' <| que, st) '(pl, Tr stNext st'' <| que, EST que st st'')
 
 data
   C1 ps ::
-    (IsPipelined, Queue ps, ps) ->
-    (IsPipelined, Queue ps, ps) ->
-    Type
+    (IsPipelined, Queue ps, ps)
+    -> (IsPipelined, Queue ps, ps)
+    -> Type
   where
-  C1 ::
-    Message ps st' st'' ->
-    C1 ps '(pl, Tr st' st'' <| que, st) '(pl, que, EST que st st'')
+  C1
+    :: Message ps st' st''
+    -> C1 ps '(pl, Tr st' st'' <| que, st) '(pl, que, EST que st st'')
 
-type Peer ::
-  forall ps ->
-  PeerRole ->
-  (Type -> Type) ->
-  ((IsPipelined, Queue ps, ps) -> Type) ->
-  (IsPipelined, Queue ps, ps) ->
-  Type
+type Peer
+  :: forall ps
+    ->PeerRole
+  -> (Type -> Type)
+  -> ((IsPipelined, Queue ps, ps) -> Type)
+  -> (IsPipelined, Queue ps, ps)
+  -> Type
 data Peer ps pr m q k where
   SReturn :: q k -> Peer ps pr m q k
   SEffect :: m (Peer ps pr m q k) -> Peer ps pr m q k
-  SYield ::
-    forall ps pr pl (st :: ps) (st' :: ps) m q.
-    ( SingI st,
-      SingI st',
-      ActiveState st
-    ) =>
-    WeHaveAgencyProof pr st ->
-    Message ps st st' ->
-    Peer ps pr m q '(pl, Empty, st') ->
-    Peer ps pr m q '(pl, Empty, st)
-  SAwait ::
-    forall ps pr pl (st :: ps) m q.
-    ( SingI st,
-      ActiveState st
-    ) =>
-    TheyHaveAgencyProof pr st ->
-    (K ps '(pl, Empty, st) I.~> Peer ps pr m q) ->
-    Peer ps pr m q '(pl, Empty, st)
-  SYieldPipelined ::
-    forall ps pr que (st :: ps) (st' :: ps) (st'' :: ps) m q.
-    ( SingI st,
-      SingI st',
-      ActiveState st
-    ) =>
-    WeHaveAgencyProof pr st ->
-    Message ps st st' ->
-    Peer ps pr m q '(Pipelined, que |> Tr st' st'', st'') ->
-    Peer ps pr m q '(Pipelined, que, st)
-  SCollect ::
-    forall ps pr que (st :: ps) (st' :: ps) (st'' :: ps) m q.
-    ( SingI st',
-      ActiveState st'
-    ) =>
-    TheyHaveAgencyProof pr st' ->
-    (C ps '(Pipelined, Tr st' st'' <| que, st) I.~> Peer ps pr m q) ->
-    Peer ps pr m q '(Pipelined, Tr st' st'' <| que, st)
-  SCollectDone ::
-    forall ps pr que (st :: ps) (st' :: ps) m q.
-    Peer ps pr m q '(Pipelined, que, st') ->
-    Peer ps pr m q '(Pipelined, Tr st st <| que, st')
-  SCollectDoneF ::
-    forall ps pr que (st :: ps) (st' :: ps) (st'' :: ps) m q.
-    ( SingI st',
-      ActiveState st'
-    ) =>
-    TheyHaveAgencyProof pr st' ->
-    (C1 ps '(Pipelined, Tr st' st'' <| que, st) I.~> Peer ps pr m q) ->
-    Peer ps pr m q '(Pipelined, Tr st' st'' <| que, st)
+  SYield
+    :: forall ps pr pl (st :: ps) (st' :: ps) m q
+     . ( SingI st
+       , SingI st'
+       , ActiveState st
+       )
+    => WeHaveAgencyProof pr st
+    -> Message ps st st'
+    -> Peer ps pr m q '(pl, Empty, st')
+    -> Peer ps pr m q '(pl, Empty, st)
+  SAwait
+    :: forall ps pr pl (st :: ps) m q
+     . ( SingI st
+       , ActiveState st
+       )
+    => TheyHaveAgencyProof pr st
+    -> (K ps '(pl, Empty, st) I.~> Peer ps pr m q)
+    -> Peer ps pr m q '(pl, Empty, st)
+  SYieldPipelined
+    :: forall ps pr que (st :: ps) (st' :: ps) (st'' :: ps) m q
+     . ( SingI st
+       , SingI st'
+       , ActiveState st
+       )
+    => WeHaveAgencyProof pr st
+    -> Message ps st st'
+    -> Peer ps pr m q '(Pipelined, que |> Tr st' st'', st'')
+    -> Peer ps pr m q '(Pipelined, que, st)
+  SCollect
+    :: forall ps pr que (st :: ps) (st' :: ps) (st'' :: ps) m q
+     . ( SingI st'
+       , ActiveState st'
+       )
+    => TheyHaveAgencyProof pr st'
+    -> (C ps '(Pipelined, Tr st' st'' <| que, st) I.~> Peer ps pr m q)
+    -> Peer ps pr m q '(Pipelined, Tr st' st'' <| que, st)
+  SCollectDone
+    :: forall ps pr que (st :: ps) (st' :: ps) m q
+     . Peer ps pr m q '(Pipelined, que, st')
+    -> Peer ps pr m q '(Pipelined, Tr st st <| que, st')
+  SCollectDoneF
+    :: forall ps pr que (st :: ps) (st' :: ps) (st'' :: ps) m q
+     . ( SingI st'
+       , ActiveState st'
+       )
+    => TheyHaveAgencyProof pr st'
+    -> (C1 ps '(Pipelined, Tr st' st'' <| que, st) I.~> Peer ps pr m q)
+    -> Peer ps pr m q '(Pipelined, Tr st' st'' <| que, st)
 
 instance Functor m => IFunctor (Peer ps pr m) where
   imap f (SReturn q) = SReturn (f q)
@@ -147,35 +147,35 @@ effect :: Functor m => m a -> Peer ps pr m (At a st) st
 effect ma = SEffect (fmap (SReturn . At) ma)
 
 -------------------------- client fun
-sYield ::
-  (SingI st, SingI st', ActiveState st, StateAgency st ~ ClientAgency) =>
-  Message ps st st' ->
-  Peer ps AsClient m (At () '(pl, Empty, st')) '(pl, Empty, st)
+sYield
+  :: (SingI st, SingI st', ActiveState st, StateAgency st ~ ClientAgency)
+  => Message ps st st'
+  -> Peer ps AsClient m (At () '(pl, Empty, st')) '(pl, Empty, st)
 sYield msg = SYield ReflClientAgency msg (SReturn (At ()))
 
-sAwait ::
-  (SingI st, ActiveState st, StateAgency st ~ ServerAgency) =>
-  Peer ps AsClient m (K ps '(pl, Empty, st)) '(pl, Empty, st)
+sAwait
+  :: (SingI st, ActiveState st, StateAgency st ~ ServerAgency)
+  => Peer ps AsClient m (K ps '(pl, Empty, st)) '(pl, Empty, st)
 sAwait = SAwait ReflServerAgency SReturn
 
-sYieldPipelined ::
-  forall ps (st'' :: ps) st st' m que.
-  (SingI st, SingI st', ActiveState st, StateAgency st ~ ClientAgency) =>
-  Message ps st st' ->
-  Peer ps AsClient m (At () '(Pipelined, que |> Tr st' st'', st'')) '(Pipelined, que, st)
+sYieldPipelined
+  :: forall ps (st'' :: ps) st st' m que
+   . (SingI st, SingI st', ActiveState st, StateAgency st ~ ClientAgency)
+  => Message ps st st'
+  -> Peer ps AsClient m (At () '(Pipelined, que |> Tr st' st'', st'')) '(Pipelined, que, st)
 sYieldPipelined msg = SYieldPipelined ReflClientAgency msg (SReturn (At ()))
 
-sCollect ::
-  (SingI st', ActiveState st', StateAgency st' ~ ServerAgency) =>
-  Peer ps AsClient m (C ps '(Pipelined, Tr st' st'' <| que, st)) '(Pipelined, Tr st' st'' <| que, st)
+sCollect
+  :: (SingI st', ActiveState st', StateAgency st' ~ ServerAgency)
+  => Peer ps AsClient m (C ps '(Pipelined, Tr st' st'' <| que, st)) '(Pipelined, Tr st' st'' <| que, st)
 sCollect = SCollect ReflServerAgency SReturn
 
 sCollectDone :: Peer ps pr m (At () '(Pipelined, que, st')) '(Pipelined, Tr st st <| que, st')
 sCollectDone = SCollectDone (SReturn $ At ())
 
-sCollectDoneF ::
-  (SingI st', ActiveState st', StateAgency st' ~ ServerAgency) =>
-  Peer ps AsClient m (C1 ps '(Pipelined, Tr st' st'' <| que, st)) '(Pipelined, Tr st' st'' <| que, st)
+sCollectDoneF
+  :: (SingI st', ActiveState st', StateAgency st' ~ ServerAgency)
+  => Peer ps AsClient m (C1 ps '(Pipelined, Tr st' st'' <| que, st)) '(Pipelined, Tr st' st'' <| que, st)
 sCollectDoneF = SCollectDoneF ReflServerAgency SReturn
 
 -- ---------------------------- example
@@ -236,14 +236,14 @@ instance Protocol PingPong where
 
   type StateToken = SPingPong
 
-ppClient ::
-  (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
-  Peer
-    PingPong
-    AsClient
-    m
-    (At () '(Pipelined, Empty, StDone))
-    '(Pipelined, Empty, StIdle)
+ppClient
+  :: (Functor m, IMonadFail (Peer PingPong 'AsClient m))
+  => Peer
+      PingPong
+      AsClient
+      m
+      (At () '(Pipelined, Empty, StDone))
+      '(Pipelined, Empty, StIdle)
 ppClient = I.do
   sYieldPipelined MsgPing
   sYieldPipelined @_ @StIdle MsgAB
@@ -258,14 +258,14 @@ ppClient = I.do
               sYield MsgDone
     _ -> undefined
 
-ppClient1 ::
-  (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
-  Peer
-    PingPong
-    AsClient
-    m
-    (At () '(Pipelined, Empty, StDone))
-    '(Pipelined, Empty, StIdle)
+ppClient1
+  :: (Functor m, IMonadFail (Peer PingPong 'AsClient m))
+  => Peer
+      PingPong
+      AsClient
+      m
+      (At () '(Pipelined, Empty, StDone))
+      '(Pipelined, Empty, StIdle)
 ppClient1 = I.do
   sYieldPipelined @_ @A MsgPing
   sCollect I.>>= \case
@@ -283,14 +283,14 @@ ppClient1 = I.do
       -- sYield MsgDone
       undefined
 
-ppClient2 ::
-  (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
-  Peer
-    PingPong
-    AsClient
-    m
-    (At () '(NonPipelined, Empty, StDone))
-    '(NonPipelined, Empty, StIdle)
+ppClient2
+  :: (Functor m, IMonadFail (Peer PingPong 'AsClient m))
+  => Peer
+      PingPong
+      AsClient
+      m
+      (At () '(NonPipelined, Empty, StDone))
+      '(NonPipelined, Empty, StIdle)
 ppClient2 = I.do
   sYield MsgPing
   sAwait I.>>= \case
@@ -302,14 +302,16 @@ ppClient2 = I.do
           sAwait I.>>= \case
             K MsgB -> sYield MsgDone
 
-ppClient3 ::
-  (Functor m, IMonadFail (Peer PingPong 'AsClient m)) =>
-  Peer
-    PingPong
-    AsClient
-    m
-    (At () '(NonPipelined, Empty, StDone))
-    '(NonPipelined, Empty, StIdle)
+ppClient3
+  :: ( Functor m
+     , IMonadFail (Peer PingPong 'AsClient m)
+     )
+  => Peer
+      PingPong
+      AsClient
+      m
+      (At () '(NonPipelined, Empty, StDone))
+      '(NonPipelined, Empty, StIdle)
 ppClient3 = I.do
   sYield MsgPing
   sAwait I.>>= \case
@@ -319,4 +321,3 @@ ppClient3 = I.do
       sYield MsgAB
       K MsgB <- sAwait
       sYield MsgDone
-
